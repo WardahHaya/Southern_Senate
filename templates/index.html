@@ -249,6 +249,25 @@
     font-size: 13px;
     flex: 1;
   }
+  .speaker-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    color: #fff;
+  }
+  .speaker-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
   .entry-bubble.live {
     border-left: 3px solid var(--accent);
   }
@@ -936,7 +955,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       await updateVideoBox(true);
     } else if (msg.type === 'transcript') {
       removeThinking();
-      addEntry(msg.timestamp, msg.text);
+      addEntry(msg.timestamp, msg.text, msg.speaker_id, msg.speaker_color, msg.diarization_enabled);
       addThinking();
       wordCount  += msg.text.split(/\s+/).filter(Boolean).length;
       chunkCount += 1;
@@ -944,6 +963,8 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       document.getElementById('statChunks').textContent = chunkCount;
       allText.push(`[${msg.timestamp}] ${msg.text}`);
     } else if (msg.type === 'error') {
+      addError(msg.message);
+    } else if (msg.type === 'warning') {
       addError(msg.message);
     } else if (msg.type === 'stopped') {
       removeThinking();
@@ -1111,12 +1132,20 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     scrollDown(true);
   }
 
-  function addEntry(ts, text) {
+  function addEntry(ts, text, speakerId = null, speakerColor = null, diarizationEnabled = false) {
     const el = document.createElement('div');
     el.className = 'entry';
+    const speakerMarkup = speakerId
+      ? `<div class="speaker-pill" style="background:${speakerColor || '#4ecdc4'}; color:${speakerColor || '#4ecdc4'};">
+          <span class="speaker-dot"></span>${escHtml(speakerId)}</div>`
+      : '';
+    const bubbleStyle = speakerColor ? `border-left: 3px solid ${speakerColor};` : '';
     el.innerHTML = `
       <div class="entry-ts">${ts}</div>
-      <div class="entry-bubble">${escHtml(text)}</div>`;
+      <div class="entry-bubble" style="${bubbleStyle}">
+        ${speakerMarkup}
+        ${escHtml(text)}
+      </div>`;
     const t = document.getElementById('transcript');
     // Clear previous highlight
     const prev = t.querySelector('.entry.latest');

@@ -207,6 +207,26 @@ def _yt_dlp_base_cmd() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def validate_runtime_environment() -> dict:
+    """Check whether the required runtime tools are available before workflow startup."""
+    issues: list[str] = []
+    ffmpeg_path = shutil.which("ffmpeg")
+    yt_dlp_path = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
+    python_path = sys.executable
+
+    if not ffmpeg_path:
+        issues.append("ffmpeg is not installed or not on PATH")
+    if not yt_dlp_path and not os.path.exists(os.path.join(os.path.dirname(python_path), "yt_dlp.exe")):
+        issues.append("yt-dlp is not installed or not available via python -m yt_dlp")
+
+    return {
+        "ffmpeg_available": bool(ffmpeg_path),
+        "yt_dlp_available": bool(yt_dlp_path or os.path.exists(os.path.join(os.path.dirname(python_path), "yt_dlp.exe"))),
+        "python_executable": python_path,
+        "issues": issues,
+    }
+
+
 # ─────────────────────────────────────────────
 # YouTube stream URL resolution
 # ─────────────────────────────────────────────
@@ -360,6 +380,12 @@ def main():
     parser.add_argument("--silence-rms", type=float, default=200.0,
                         help="RMS energy below which a chunk is treated as silence and skipped")
     args = parser.parse_args()
+
+    runtime_status = validate_runtime_environment()
+    if runtime_status["issues"]:
+        print("[runtime] Environment issues detected:")
+        for issue in runtime_status["issues"]:
+            print(f"  - {issue}")
 
     # ── Load model (unless using HTTP API) ──────────────────────────────────
     model = processor = device = None

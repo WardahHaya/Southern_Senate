@@ -15,11 +15,14 @@ import subprocess
 import platform
 import threading
 import time
+import os
 
 import psutil
 import torch
 import logging
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+
+from speaker_diarization import DiarizationContext, env_flag, load_hf_token_from_env_file
 
 from YouTubeLiveTranscribe import (
     CHANNELS,
@@ -40,6 +43,12 @@ app = Flask(__name__)
 
 # Hide noisy per-request logs (e.g. /metrics polling). We'll print our own high-signal messages instead.
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
+_hf_token = os.getenv("HF_TOKEN") or load_hf_token_from_env_file()
+_diary = DiarizationContext(
+    enabled=env_flag("DIARIZATION_ENABLED", default=bool(_hf_token)),
+    hf_token=_hf_token,
+)
 
 # ── Global model state ────────────────────────────────────────────────────────
 _model = _processor = _device = None
@@ -169,7 +178,16 @@ def status():
         return jsonify({"status": "loading", "loading": _model_loading_state})
     if _model_error:
         return jsonify({"status": "error", "message": _model_error, "loading": _model_loading_state})
-    return jsonify({"status": "ready", "session_active": _session_active, "model_id": _current_model_id})
+    return jsonify({
+        "status": "ready",
+        "session_active": _session_active,
+        "model_id": _current_model_id,
+        "diarization": {
+            "enabled": _diary.enabled,
+            "ready": _diary.is_ready(),
+            "error": _diary.pipeline_error,
+        },
+    })
 
 
 @app.route("/models")
@@ -495,6 +513,13 @@ def _run_session(
         prev_tail_pcm   = b""
         prev_tail_words = []
         chunk_num       = 0
+        session_start_monotonic = time.monotonic()
+        diarization_buffer = bytearray()
+        diarization_segments = []
+        last_diarization_run = 0.0
+        diarization_window_seconds = 30.0
+        diarization_run_interval = 8.0
+        max_diarization_bytes = int(SAMPLE_RATE * diarization_window_seconds * SAMPLE_WIDTH * CHANNELS)
 
         while not _session_stop.is_set():
             try:
@@ -508,6 +533,20 @@ def _run_session(
                 prev_tail_pcm   = b""
                 prev_tail_words = []
                 continue
+
+            if _diary.enabled:
+                diarization_buffer.extend(pcm_data)
+                if len(diarization_buffer) > max_diarization_bytes:
+                    diarization_buffer = diarization_buffer[-max_diarization_bytes:]
+                if time.monotonic() - last_diarization_run >= diarization_run_interval and len(diarization_buffer) >= int(SAMPLE_RATE * 8 * SAMPLE_WIDTH * CHANNELS):
+                    last_diarization_run = time.monotonic()
+                    try:
+                        diarization_segments = _diary.diarize_pcm(bytes(diarization_buffer), SAMPLE_RATE)
+                    except Exception as exc:
+                        reason = f"Diarization disabled: {exc}"
+                        _diary.disable(reason)
+                        diarization_segments = []
+                        _transcript_q.put({"type": "warning", "message": reason})
 
             combined_pcm  = prev_tail_pcm + pcm_data
             prev_tail_pcm = pcm_data[-tail_bytes:]
@@ -536,11 +575,20 @@ def _run_session(
             if text:
                 prev_tail_words = text.split()[-3:]
                 ts = time.strftime("%H:%M:%S")
+                speaker_label = None
+                if diarization_segments:
+                    buffer_seconds = len(diarization_buffer) / (SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS)
+                    target_seconds = max(0.0, min(buffer_seconds, buffer_seconds - max(0.5, chunk_seconds * 0.5)))
+                    speaker_label = _diary.select_speaker_for_time(diarization_segments, target_seconds)
+                speaker_id, color = _diary.registry.register_label(speaker_label)
                 _transcript_q.put({
                     "type":    "transcript",
                     "timestamp": ts,
                     "text":    text,
                     "elapsed": round(elapsed, 2),
+                    "speaker_id": speaker_id,
+                    "speaker_color": color,
+                    "diarization_enabled": _diary.enabled,
                 })
 
     except Exception as exc:
@@ -559,4 +607,4 @@ if __name__ == "__main__":
     print("  Open http://localhost:7860 in your browser")
     print("  Model loading in background …")
     print("=" * 55)
-    app.run(host="0.0.0.0", port=7860, debug=False, threaded=True)
+    app.run(host="127.0.0.1", port=7860, debug=False, threaded=True)
