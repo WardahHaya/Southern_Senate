@@ -14,11 +14,14 @@
 #
 # ═══════════════════════════════════════════════════════════════
 
-# ── PyTorch with CUDA 12.6 ──────────────────────────────────
-# If you don't have a CUDA GPU, remove the --extra-index-url
-# line and change torch==2.7.1 to just: torch
-torch
-torchaudio
+# ── PyTorch with CUDA 13.0 ──────────────────────────────────
+# PyTorch 2.11 crashes in torch_cpu.dll while materializing Voxtral on
+# Windows. The 2.13 CUDA wheel loads the complete model successfully.
+--extra-index-url https://download.pytorch.org/whl/test/cu130
+torch==2.13.0+cu130
+# 2.13 TorchAudio Windows wheels are not published yet. The application
+# passes in-memory audio to pyannote and does not depend on TorchAudio ABI.
+torchaudio==2.11.0+cu130
 
 # ── Voxtral model (Mistral) ──────────────────────────────────
 transformers==5.3.0
@@ -36,11 +39,17 @@ Werkzeug>=3.1.0
 pyannote.audio==4.0.7
 
 # ── YouTube stream download ──────────────────────────────────
-yt-dlp==2026.3.3
+# Includes yt-dlp-ejs, required for current YouTube JavaScript challenges.
+yt-dlp[default]==2026.7.4
 
 # ── Audio processing ─────────────────────────────────────────
 numpy==2.4.3
 soundfile==0.13.1
+
+# ── Optional stable-broadcast transcription backend ─────────
+# Provides word timestamps for precise pyannote speaker/text fusion.
+faster-whisper==1.2.1
+nvidia-cublas-cu12==12.9.2.10; sys_platform == "win32"
 
 # ── Utilities ────────────────────────────────────────────────
 requests>=2.28.0

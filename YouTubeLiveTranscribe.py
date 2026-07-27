@@ -28,10 +28,13 @@ import queue
 import signal
 import logging
 import tempfile
+import importlib.util
+from pathlib import Path
 
 import torch
 import numpy as np
 from transformers import VoxtralRealtimeForConditionalGeneration, AutoProcessor
+from transformers import modeling_utils
 from transformers.processing_utils import ProcessorMixin
 from mistral_common.tokens.tokenizers.audio import Audio
 from mistral_common.protocol.instruct.chunk import RawAudio
@@ -48,11 +51,12 @@ TAIL_SECONDS = 0.3        # audio overlap kept from end of previous chunk
 
 # Reuse the same cache dir as the main Voxtral server
 if os.name == "nt":
-    _PROGRAMDATA = os.environ.get("PROGRAMDATA", "C:\\ProgramData")
+    # Keep multi-gigabyte model weights on the project drive. The Windows
+    # system drive may not have enough working space for both weights and the
+    # page file during model initialization.
+    DEFAULT_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model_cache")
 else:
-    _PROGRAMDATA = os.path.expanduser("~/.local/share")
-
-DEFAULT_CACHE_DIR = os.path.join(_PROGRAMDATA, "Antix Digital", "AICS Service", "model_cache")
+    DEFAULT_CACHE_DIR = os.path.expanduser("~/.local/share/Antix Digital/AICS Service/model_cache")
 
 logging.getLogger("transformers").setLevel(logging.ERROR)
 
@@ -77,12 +81,21 @@ def load_voxtral_model(cache_dir: str, model_id: str = MODEL_ID):
     finally:
         ProcessorMixin.__repr__ = original_repr
 
-    model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
-        model_id,
-        dtype=dtype,
-        device_map=device,
-        cache_dir=cache_dir,
-    )
+    # Transformers normally makes one model-sized allocator warm-up before
+    # loading weights. Windows WDDM can reject that single large allocation
+    # even when the tensors themselves fit. Skip only that optional warm-up
+    # and continue streaming the checkpoint directly to the selected device.
+    original_allocator_warmup = modeling_utils.caching_allocator_warmup
+    modeling_utils.caching_allocator_warmup = lambda *args, **kwargs: None
+    try:
+        model = VoxtralRealtimeForConditionalGeneration.from_pretrained(
+            model_id,
+            dtype=dtype,
+            device_map=device,
+            cache_dir=cache_dir,
+        )
+    finally:
+        modeling_utils.caching_allocator_warmup = original_allocator_warmup
     model.eval()
     print("[model] Ready\n")
     return model, processor, device
@@ -168,7 +181,9 @@ def transcribe_wav_bytes(
                 moved[k] = v
         inputs = moved
 
-        with torch.no_grad():
+        # Inference mode removes autograd version tracking in addition to
+        # gradients and is measurably cheaper in the repeated live loop.
+        with torch.inference_mode():
             gen_kwargs = {"max_new_tokens": int(max_new_tokens)}
             # Temperature only matters when sampling is enabled.
             if temperature and float(temperature) > 0:
@@ -207,21 +222,41 @@ def _yt_dlp_base_cmd() -> list[str]:
     return [sys.executable, "-m", "yt_dlp"]
 
 
+def _find_deno() -> str | None:
+    """Find Deno, including a fresh winget install not yet visible on PATH."""
+    deno = shutil.which("deno") or shutil.which("deno.exe")
+    if deno:
+        return deno
+    if os.name != "nt":
+        return None
+    package_root = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages"
+    if not package_root.is_dir():
+        return None
+    matches = sorted(package_root.glob("DenoLand.Deno_*/*deno.exe"))
+    return str(matches[-1]) if matches else None
+
+
 def validate_runtime_environment() -> dict:
     """Check whether the required runtime tools are available before workflow startup."""
     issues: list[str] = []
     ffmpeg_path = shutil.which("ffmpeg")
     yt_dlp_path = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
+    deno_path = _find_deno()
     python_path = sys.executable
+    yt_dlp_module_available = importlib.util.find_spec("yt_dlp") is not None
 
     if not ffmpeg_path:
         issues.append("ffmpeg is not installed or not on PATH")
-    if not yt_dlp_path and not os.path.exists(os.path.join(os.path.dirname(python_path), "yt_dlp.exe")):
+    if not yt_dlp_path and not yt_dlp_module_available:
         issues.append("yt-dlp is not installed or not available via python -m yt_dlp")
+    if not deno_path:
+        issues.append("Deno is not installed; YouTube JavaScript challenge solving may fail")
 
     return {
         "ffmpeg_available": bool(ffmpeg_path),
-        "yt_dlp_available": bool(yt_dlp_path or os.path.exists(os.path.join(os.path.dirname(python_path), "yt_dlp.exe"))),
+        "yt_dlp_available": bool(yt_dlp_path or yt_dlp_module_available),
+        "deno_available": bool(deno_path),
+        "deno_path": deno_path,
         "python_executable": python_path,
         "issues": issues,
     }
@@ -230,7 +265,12 @@ def validate_runtime_environment() -> dict:
 # ─────────────────────────────────────────────
 # YouTube stream URL resolution
 # ─────────────────────────────────────────────
-def get_audio_stream_url(youtube_url: str) -> str:
+def _get_stream_url(
+    youtube_url: str,
+    format_selector: str,
+    cookie_browser: str | None = None,
+    stream_kind: str = "stream",
+) -> str:
     """
     Use yt-dlp to resolve the best audio stream URL.
     For live streams this returns the HLS / DASH manifest URL — ffmpeg handles both.
@@ -238,28 +278,71 @@ def get_audio_stream_url(youtube_url: str) -> str:
     cmd = _yt_dlp_base_cmd() + [
         "--no-playlist",
         "--no-warnings",
-        "-f", "bestaudio/best",
+        "-f", format_selector,
         "--get-url",
-        youtube_url,
     ]
-    print(f"[yt-dlp] Resolving stream URL ...")
+    deno_path = _find_deno()
+    if deno_path:
+        cmd.extend(["--js-runtimes", f"deno:{deno_path}"])
+    allowed_browsers = {"edge", "chrome", "firefox", "brave"}
+    selected_browser = (cookie_browser or "").strip().lower()
+    if selected_browser:
+        if selected_browser not in allowed_browsers:
+            raise RuntimeError(f"Unsupported cookie browser: {selected_browser}")
+        cmd.extend(["--cookies-from-browser", selected_browser])
+    cmd.append(youtube_url)
+    auth_mode = f" using {selected_browser} sign-in" if selected_browser else ""
+    print(f"[yt-dlp] Resolving {stream_kind} URL{auth_mode} ...")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"yt-dlp failed:\n{result.stderr.strip()}")
+        details = result.stderr.strip()
+        if "Could not copy Chrome cookie database" in details:
+            raise RuntimeError(
+                "Chrome is still using its cookie database. Fully exit Chrome "
+                "(including background processes), then retry, or select Edge/Firefox."
+            )
+        if "Sign in to confirm you’re not a bot" in details and not selected_browser:
+            raise RuntimeError(
+                "YouTube requires authentication for this stream. "
+                "Select your signed-in browser under YouTube Sign-in and retry."
+            )
+        raise RuntimeError(f"yt-dlp failed:\n{details}")
 
     # yt-dlp may return multiple lines (audio + video); take the first
     url = result.stdout.strip().splitlines()[0]
     if not url:
         raise RuntimeError("yt-dlp returned an empty URL")
-    print(f"[yt-dlp] Stream URL resolved\n")
+    print(f"[yt-dlp] {stream_kind.capitalize()} URL resolved\n")
     return url
+
+
+def get_audio_stream_url(youtube_url: str, cookie_browser: str | None = None) -> str:
+    """Resolve the best audio-only stream for transcription."""
+    return _get_stream_url(
+        youtube_url,
+        "bestaudio/best",
+        cookie_browser=cookie_browser,
+        stream_kind="audio stream",
+    )
+
+
+def get_video_stream_url(youtube_url: str, cookie_browser: str | None = None) -> str:
+    """Resolve a muxed live format suitable for the authenticated UI preview."""
+    return _get_stream_url(
+        youtube_url,
+        "best[height<=720]/best",
+        cookie_browser=cookie_browser,
+        stream_kind="video stream",
+    )
 
 
 # ─────────────────────────────────────────────
 # ffmpeg audio capture thread
 # ─────────────────────────────────────────────
 def stream_audio(stream_url: str, chunk_seconds: float,
-                 audio_queue: queue.Queue, stop_event: threading.Event):
+                 audio_queue: queue.Queue, stop_event: threading.Event,
+                 telemetry: dict | None = None,
+                 live_audio_queue: queue.Queue | None = None):
     """
     Run ffmpeg to pull audio from `stream_url`, decode to 16kHz mono PCM,
     then push fixed-size chunks into `audio_queue`.
@@ -268,6 +351,13 @@ def stream_audio(stream_url: str, chunk_seconds: float,
 
     ffmpeg_cmd = [
         "ffmpeg",
+        # HLS servers may initially expose several buffered segments. Read at
+        # media speed so a fast connection cannot dump them into the caption
+        # UI in a burst before reaching the live edge.
+        "-re",
+        # FFmpeg otherwise starts a few HLS segments behind the live edge.
+        # Begin with the newest available segment for minimum broadcast lag.
+        "-live_start_index",       "-1",
         "-reconnect",              "1",
         "-reconnect_streamed",     "1",
         "-reconnect_delay_max",    "5",
@@ -287,20 +377,54 @@ def stream_audio(stream_url: str, chunk_seconds: float,
     )
 
     buf = b""
+    live_buf = b""
+    live_slice_bytes = int(SAMPLE_RATE * 0.5 * SAMPLE_WIDTH * CHANNELS)
+    captured_live_seconds = 0.0
     try:
         while not stop_event.is_set():
             data = proc.stdout.read(4096)
             if not data:
                 print("[ffmpeg] Stream ended.")
+                if telemetry is not None:
+                    telemetry["source_ended"] = True
                 break
+            if telemetry is not None:
+                telemetry["last_audio_received"] = time.monotonic()
+                telemetry["source_ended"] = False
             buf += data
+            if live_audio_queue is not None:
+                live_buf += data
+                while len(live_buf) >= live_slice_bytes:
+                    live_slice = live_buf[:live_slice_bytes]
+                    live_buf = live_buf[live_slice_bytes:]
+                    captured_live_seconds += 0.5
+                    item = (live_slice, captured_live_seconds)
+                    try:
+                        live_audio_queue.put_nowait(item)
+                    except queue.Full:
+                        # Diarization is a live side-channel: discard only its
+                        # oldest unprocessed slice and keep capture/transcription
+                        # lossless and unblocked.
+                        try:
+                            live_audio_queue.get_nowait()
+                        except queue.Empty:
+                            pass
+                        try:
+                            live_audio_queue.put_nowait(item)
+                        except queue.Full:
+                            pass
             while len(buf) >= chunk_bytes:
                 chunk = buf[:chunk_bytes]
                 buf   = buf[chunk_bytes:]
                 try:
-                    audio_queue.put(chunk, timeout=2)
+                    # Lossless mode: wait for the consumer instead of dropping
+                    # any captured speech. With an unbounded live-session queue
+                    # this returns immediately under normal operation.
+                    audio_queue.put(chunk)
                 except queue.Full:
-                    pass   # drop oldest chunk rather than block
+                    # Retained for callers that deliberately provide a bounded
+                    # queue: apply backpressure until space becomes available.
+                    audio_queue.put(chunk)
     finally:
         proc.kill()
         proc.wait()

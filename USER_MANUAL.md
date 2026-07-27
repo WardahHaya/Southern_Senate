@@ -80,7 +80,7 @@ Default cache location:
 ### Web UI (recommended)
 
 ```bash
-python YouTubeLiveTranscribeUI.py
+.\run.ps1
 ```
 
 Then open your browser at: **http://localhost:7860**

@@ -4,6 +4,11 @@ __pycache__/
 
 .env
 .venv/
+.venv311/
+.install-temp/
+.pip-cache/
+model_cache/
+runtime_spool/
 env/
 venv/
 voxtralenv/

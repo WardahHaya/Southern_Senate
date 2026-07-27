@@ -70,10 +70,10 @@
   main {
     flex: 1;
     display: grid;
-    grid-template-columns: 1fr 420px;
+    grid-template-columns: minmax(560px, 1.05fr) minmax(520px, .95fr);
     gap: 20px;
     padding: 20px 24px;
-    max-width: 1300px;
+    max-width: 1600px;
     width: 100%;
     margin: 0 auto;
     align-items: stretch;
@@ -98,7 +98,16 @@
   .left-scroll {
     overflow: auto;
     padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
   }
+  .left-scroll > * { flex-shrink: 0; }
+  .left-scroll > .url-label { order: 1; color: var(--text); font-size: 13px; font-weight: 700; }
+  .left-scroll > .url-row { order: 2; }
+  .left-scroll > .video-box { order: 3; }
+  .left-scroll > .settings-panel { order: 4; }
+  .left-scroll > .metrics-card { order: 5; margin-top: 14px; margin-bottom: 0; }
 
   /* ── URL input area ── */
   .url-row { display: flex; gap: 10px; margin-top: 10px; }
@@ -141,7 +150,12 @@
     background: #0a0e13;
     border: 1px solid var(--border);
     border-radius: 8px;
-    height: 280px;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 16 / 9;
+    max-height: 390px;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -153,13 +167,25 @@
   .video-icon { font-size: 36px; opacity: .3; }
 
   /* ── Model parameters ── */
-  .params-heading {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; font-weight: 700; letter-spacing: .8px;
-    color: var(--text-dim); text-transform: uppercase;
-    margin-bottom: 16px; margin-top: 20px;
+  .settings-panel {
+    margin-top: 16px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+    flex: 0 0 auto;
   }
-  .params-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .settings-panel summary {
+    display: flex; align-items: center; justify-content: space-between;
+    min-height: 48px; padding: 0 14px; cursor: pointer; list-style: none;
+    color: var(--text); font-size: 13px; font-weight: 700;
+  }
+  .settings-panel summary::-webkit-details-marker { display: none; }
+  .settings-summary-note { color: var(--text-dim); font-size: 11px; font-weight: 500; }
+  .settings-summary-note::after { content: "Show"; margin-left: 16px; color: #9fb2c9; }
+  .settings-panel[open] .settings-summary-note::after { content: "Hide"; }
+  .params-heading { display: none; }
+  .params-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    padding: 16px; border-top: 1px solid var(--border);
+  }
   .param-full  { grid-column: 1 / -1; }
 
   .param-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500; }
@@ -193,6 +219,37 @@
   .panel-header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 14px;
+  }
+  .pipeline-strip {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0 -20px 12px; padding: 12px 18px;
+    background: #111925; border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .pipeline-step { position: relative; min-width: 0; padding-right: 12px; color: var(--text-dim); }
+  .pipeline-step:not(:last-child)::after {
+    content: ""; position: absolute; top: 10px; right: 5px;
+    width: 18px; height: 1px; background: var(--border);
+  }
+  .pipeline-step-top { display: flex; align-items: center; gap: 7px; }
+  .pipeline-number {
+    width: 21px; height: 21px; flex: 0 0 21px; display: grid; place-items: center;
+    border-radius: 50%; background: #275d9c; color: white; font-size: 10px; font-weight: 800;
+  }
+  .pipeline-step:first-child .pipeline-number,
+  .pipeline-step:nth-child(2) .pipeline-number { background: #188944; }
+  .pipeline-name {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text); font-size: 11px; font-weight: 700;
+  }
+  .pipeline-state {
+    display: block; margin: 5px 0 0 28px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; font-size: 10px;
+  }
+  .transcript-help {
+    margin: -12px -20px 12px; padding: 10px 20px;
+    background: #162131; border-bottom: 1px solid var(--border);
+    color: #a9bad0; font-size: 11px;
   }
   .panel-title {
     display: flex; align-items: center; gap: 8px;
@@ -246,7 +303,7 @@
     border-radius: 8px;
     padding: 10px 14px;
     line-height: 1.55;
-    font-size: 13px;
+    font-size: 15px;
     flex: 1;
   }
   .speaker-pill {
@@ -267,6 +324,14 @@
     height: 7px;
     border-radius: 50%;
     background: currentColor;
+  }
+  @keyframes speakerChangePulse {
+    0%   { transform: scale(.92); filter: brightness(1.7); }
+    55%  { transform: scale(1.06); filter: brightness(1.25); }
+    100% { transform: scale(1); filter: brightness(1); }
+  }
+  .speaker-change-pulse {
+    animation: speakerChangePulse .55s ease-out;
   }
   .entry-bubble.live {
     border-left: 3px solid var(--accent);
@@ -290,7 +355,7 @@
 
   /* ── Stats bar ── */
   .stats-bar {
-    display: flex; gap: 20px;
+    display: flex; flex-wrap: wrap; gap: 8px 20px;
     border-top: 1px solid var(--border);
     padding-top: 12px; margin-top: 12px;
     font-size: 12px; color: var(--text-dim);
@@ -330,6 +395,23 @@
 
   .specs-line { margin-top: 10px; font-size: 12px; color: var(--text-dim); line-height: 1.4; }
   .specs-line b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 1080px) {
+    main { grid-template-columns: 1fr; max-width: 900px; }
+    .panel-card { height: auto; min-height: 620px; }
+    .right-panel { height: 75vh; }
+  }
+  @media (max-width: 640px) {
+    header { padding: 0 14px; }
+    main { padding: 12px; }
+    .card { padding: 14px; }
+    .url-row { flex-direction: column; }
+    .btn-transcribe { justify-content: center; }
+    .params-grid, .metrics-grid { grid-template-columns: 1fr; }
+    .pipeline-strip { margin-left: -14px; margin-right: -14px; padding: 10px; }
+    .pipeline-state, .pipeline-step:not(:last-child)::after { display: none; }
+    .pipeline-name { font-size: 10px; }
+  }
 
   /* ── Animations ── */
   @keyframes pulse {
@@ -405,7 +487,7 @@
               <i id="vramBar"></i>
             </div>
             <div class="metric-sub" style="margin-top:6px">
-              <span>Allocated</span>
+              <span id="vramMeasurementLabel">Allocated</span>
               <span><span id="gpuVramAllocatedGb">--</span> GB</span>
             </div>
           </div>
@@ -448,9 +530,14 @@ Note: playback is separate from transcription. If YouTube buffers or is delayed,
         <span>Enter a YouTube URL to begin live monitoring</span>
       </div>
 
-      <!-- Model parameters -->
-      <div class="params-heading">⚙ Model Parameters</div>
-      <div class="params-grid">
+      <!-- Advanced controls stay available without crowding the live workflow. -->
+      <details class="settings-panel" id="settingsPanel" open>
+        <summary>
+          <span>Transcription settings</span>
+          <span class="settings-summary-note">Recommended defaults are active</span>
+        </summary>
+        <div class="params-heading">Model Parameters</div>
+        <div class="params-grid">
 
         <div>
           <div class="param-label" title="Spoken language hint (ISO-639-1).
@@ -477,15 +564,26 @@ If unsure, leave English.">Language</div>
         </div>
 
         <div>
+          <div class="param-label" title="Use your existing YouTube browser session only when YouTube blocks public access. Cookie values stay inside yt-dlp and are never logged.">YouTube Sign-in</div>
+          <select id="paramCookieBrowser" title="Browser currently signed in to YouTube">
+            <option value="">Public stream (no sign-in)</option>
+            <option value="edge">Microsoft Edge</option>
+            <option value="chrome">Google Chrome</option>
+            <option value="firefox">Mozilla Firefox</option>
+            <option value="brave">Brave</option>
+          </select>
+        </div>
+
+        <div>
           <div class="param-label" title="Audio chunk size per inference (seconds).
 
 Tradeoff:
 - Smaller (1–2s): lower latency, may miss boundary words
 - Larger (4–10s): better context/accuracy, higher latency
 
-Recommended: 2–4s.">Chunk Seconds <span id="chunkVal" style="color:var(--text)">2.0s</span></div>
+Recommended for speaker changes: 1s.">Chunk Seconds <span id="chunkVal" style="color:var(--text)">1.0s</span></div>
           <div class="slider-row">
-            <input type="range" id="paramChunk" min="1" max="10" step="0.5" value="2" title="Audio chunk size in seconds"
+            <input type="range" id="paramChunk" min="1" max="10" step="0.5" value="1" title="Audio chunk size in seconds"
                    oninput="document.getElementById('chunkVal').textContent = (+this.value).toFixed(1)+'s'" />
           </div>
           <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:3px">
@@ -501,9 +599,9 @@ Effects:
 - Lower: captures quieter speech (more compute)
 
 If you miss speech, lower it.
-If you see lots of empty/garbage during silence, raise it.">Silence Threshold (RMS) <span id="rmsVal" style="color:var(--text)">200</span></div>
+If you see lots of empty/garbage during silence, raise it.">Silence Threshold (RMS) <span id="rmsVal" style="color:var(--text)">50</span></div>
           <div class="slider-row">
-            <input type="range" id="paramRms" min="0" max="600" step="10" value="200" title="Silence RMS threshold"
+            <input type="range" id="paramRms" min="0" max="600" step="10" value="50" title="Silence RMS threshold"
                    oninput="document.getElementById('rmsVal').textContent = this.value" />
           </div>
           <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:3px">
@@ -530,6 +628,7 @@ What it does:
 
 Tip:
 - If HuggingFace is slow/504, try again later (auto-retry happens in backend).">Load model</button>
+            <button class="btn-sm" id="unloadModelBtn" type="button" onclick="unloadModel()" title="Stop transcription and unload the current model to free GPU memory.">Unload model</button>
             <button class="btn-sm" type="button" onclick="resetDefaults()" title="Reset all controls to recommended defaults.
 
 Resets:
@@ -555,9 +654,9 @@ Higher:
 - can complete longer phrases
 - slightly more latency
 
-Recommended: 128–256.">Max New Tokens <span id="tokVal" style="color:var(--text)">256</span></div>
+Recommended for live news: 64.">Max New Tokens <span id="tokVal" style="color:var(--text)">64</span></div>
           <div class="slider-row">
-            <input type="range" id="paramMaxTokens" min="32" max="512" step="16" value="256" title="Max tokens per chunk"
+            <input type="range" id="paramMaxTokens" min="32" max="512" step="16" value="64" title="Max tokens per chunk"
                    oninput="document.getElementById('tokVal').textContent = this.value" />
           </div>
         </div>
@@ -606,14 +705,15 @@ Higher delay can:
 
 But increases latency.
 
-Recommended: 480ms">Target Delay (ms) <span id="delayVal" style="color:var(--text)">480</span></div>
+Recommended: 120ms">Target Delay (ms) <span id="delayVal" style="color:var(--text)">120</span></div>
           <div class="slider-row">
-            <input type="range" id="paramDelay" min="0" max="2400" step="60" value="480" title="Target delay in milliseconds"
+            <input type="range" id="paramDelay" min="0" max="2400" step="60" value="120" title="Target delay in milliseconds"
                    oninput="document.getElementById('delayVal').textContent = this.value" />
           </div>
         </div>
 
-      </div>
+        </div>
+      </details>
     </div>
 
       <!-- Console (under controls) -->
@@ -639,6 +739,9 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       <div class="panel-title">
         <div class="dot" id="liveDot"></div>
         Live Transcription
+        <span id="currentSpeakerIndicator"
+          style="display:none;margin-left:8px;padding:3px 9px;border-radius:999px;
+          font-size:10px;font-weight:800;letter-spacing:.4px;"></span>
       </div>
       <div class="panel-actions">
         <button class="btn-sm" onclick="clearTranscript()">Clear</button>
@@ -646,12 +749,36 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       </div>
     </div>
 
+    <div class="pipeline-strip" aria-label="Live processing workflow">
+      <div class="pipeline-step">
+        <div class="pipeline-step-top"><span class="pipeline-number">1</span><span class="pipeline-name">Live source</span></div>
+        <span class="pipeline-state" id="stageSource">Waiting for URL</span>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-top"><span class="pipeline-number">2</span><span class="pipeline-name">Audio capture</span></div>
+        <span class="pipeline-state" id="stageAudio">Idle</span>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-top"><span class="pipeline-number">3</span><span class="pipeline-name">Speech to text</span></div>
+        <span class="pipeline-state" id="stageText">Model ready</span>
+      </div>
+      <div class="pipeline-step">
+        <div class="pipeline-step-top"><span class="pipeline-number">4</span><span class="pipeline-name">Speaker labeling</span></div>
+        <span class="pipeline-state" id="stageSpeaker">Tracking voices</span>
+      </div>
+    </div>
+    <div class="transcript-help">Speech appears below as it is confirmed. Speaker labels and high-contrast colors update automatically.</div>
+
     <div id="transcript"></div>
 
     <div class="stats-bar">
       <span>Words: <b id="statWords">0</b></span>
       <span>Chunks: <b id="statChunks">0</b></span>
       <span>Status: <b id="statStatus">Idle</b></span>
+      <span>Source: <b id="sourceStatus">Idle</b></span>
+      <span>Transcript: <b id="transcriptionStatus">Idle</b></span>
+      <span>Backlog: <b id="backlogStatus">0.0s · Caught up</b></span>
+      <span>RTF: <b id="rtfStatus">--</b></span>
     </div>
   </div>
 </main>
@@ -665,6 +792,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
   let followLive = true;
   let consoleSource = null;
   let consoleIdx = 0;
+  let consoleErrorShown = false;
   let modelCatalog = null;
 
   function isNearBottom(el, px = 80) {
@@ -705,6 +833,10 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
           document.getElementById('statStatus').textContent = 'Receiving…';
           openStream();
         }
+      } else if (d.status === 'unloaded') {
+        dot.className = 'dot';
+        text.textContent = 'Model Unloaded';
+        btn.disabled = true;
       } else {
         dot.className = 'dot error';
         text.textContent = 'Model error';
@@ -751,6 +883,26 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     if (!r.ok) addError(d.error || 'Failed to load model');
     pollStatus();
   }
+  async function unloadModel() {
+    const button = document.getElementById('unloadModelBtn');
+    button.disabled = true;
+    try {
+      const r = await fetch('/unload_model', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) {
+        addError(d.error || 'Failed to unload model');
+        return;
+      }
+      setSessionUI(false);
+      updateVideoBox(false);
+      const box = document.getElementById('consoleBox');
+      box.textContent += `[ui] Model unloaded; freed ${d.freed_vram_gb.toFixed(2)} GB VRAM, ${d.allocated_vram_gb.toFixed(2)} GB remains allocated\n`;
+      box.scrollTop = box.scrollHeight;
+      pollStatus();
+    } finally {
+      button.disabled = false;
+    }
+  }
   initModels();
 
   function _appendConsoleText(raw) {
@@ -783,6 +935,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
 
     consoleSource = new EventSource('/console_stream?since=' + consoleIdx);
     _appendConsoleText('[ui] Console connected');
+    consoleSource.onopen = () => { consoleErrorShown = false; };
     consoleSource.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       if (msg.type === 'ping') return;
@@ -795,7 +948,10 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       }
     };
     consoleSource.onerror = () => {
-      _appendConsoleText('[ui] Console stream error (will retry on refresh)');
+      if (!consoleErrorShown) {
+        _appendConsoleText('[ui] Console disconnected; reconnecting automatically…');
+        consoleErrorShown = true;
+      }
     };
   }
   function clearConsole() {
@@ -832,6 +988,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
   }
 
   _wireControlLog('paramLanguage', 'language', v => v);
+  _wireControlLog('paramCookieBrowser', 'youtube_sign_in', v => v || 'public');
   _wireControlLog('paramChunk', 'chunk_seconds', v => (+v).toFixed(1) + 's');
   _wireControlLog('paramRms', 'silence_rms', v => v);
   _wireControlLog('paramModel', 'model', v => v);
@@ -843,16 +1000,18 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
   function resetDefaults() {
     const defaults = {
       language: 'en',
-      chunk_seconds: 2.0,
-      silence_rms: 200,
-      model_id: (modelCatalog?.current_model_id || 'mistralai/Voxtral-Mini-4B-Realtime-2602'),
-      max_new_tokens: 256,
+      cookie_browser: '',
+      chunk_seconds: 1.0,
+      silence_rms: 20,
+      model_id: (modelCatalog?.current_model_id || 'mistralai/Voxtral-Mini-3B-Realtime-2602'),
+      max_new_tokens: 64,
       temperature: 0.0,
-      tail_seconds: 0.3,
-      target_delay_ms: 480,
+      tail_seconds: 0.4,
+      target_delay_ms: 120,
     };
 
     document.getElementById('paramLanguage').value = defaults.language;
+    document.getElementById('paramCookieBrowser').value = defaults.cookie_browser;
     document.getElementById('paramChunk').value = String(defaults.chunk_seconds);
     document.getElementById('chunkVal').textContent = defaults.chunk_seconds.toFixed(1) + 's';
 
@@ -890,6 +1049,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     const chunk = parseFloat(document.getElementById('paramChunk').value);
     const rms   = parseFloat(document.getElementById('paramRms').value);
     const lang  = document.getElementById('paramLanguage').value;
+    const cookie_browser = document.getElementById('paramCookieBrowser').value;
     const max_new_tokens = parseInt(document.getElementById('paramMaxTokens').value, 10);
     const temperature = parseFloat(document.getElementById('paramTemp').value);
     const tail_seconds = parseFloat(document.getElementById('paramTail').value);
@@ -916,6 +1076,7 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
         url,
         chunk_seconds: chunk,
         language: lang,
+        cookie_browser,
         silence_rms: rms,
         max_new_tokens,
         temperature,
@@ -955,13 +1116,23 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       await updateVideoBox(true);
     } else if (msg.type === 'transcript') {
       removeThinking();
-      addEntry(msg.timestamp, msg.text, msg.speaker_id, msg.speaker_color, msg.diarization_enabled);
+      addEntry(msg.timestamp, msg.text, msg.speaker_id, msg.speaker_color, msg.diarization_enabled, msg.entry_id);
+      if (msg.speaker_id) {
+        updateActiveSpeaker(msg.speaker_id, msg.speaker_color);
+      }
       addThinking();
       wordCount  += msg.text.split(/\s+/).filter(Boolean).length;
       chunkCount += 1;
       document.getElementById('statWords').textContent  = wordCount;
       document.getElementById('statChunks').textContent = chunkCount;
       allText.push(`[${msg.timestamp}] ${msg.text}`);
+    } else if (msg.type === 'speaker_update') {
+      updateEntrySpeaker(msg.entry_id, msg.speaker_id, msg.speaker_color);
+      if (msg.speaker_id) {
+        updateActiveSpeaker(msg.speaker_id, msg.speaker_color);
+      }
+    } else if (msg.type === 'speaker_turn') {
+      updateActiveSpeaker(msg.speaker_id, msg.speaker_color);
     } else if (msg.type === 'error') {
       addError(msg.message);
     } else if (msg.type === 'warning') {
@@ -991,6 +1162,33 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     try {
       const r = await fetch('/metrics', { cache: 'no-store' });
       const d = await r.json();
+      const live = d.live || {};
+
+      if (!live.session_active) {
+        document.getElementById('sourceStatus').textContent = 'Idle';
+        document.getElementById('transcriptionStatus').textContent = 'Idle';
+        document.getElementById('backlogStatus').textContent = '0.0s · Caught up';
+        document.getElementById('rtfStatus').textContent = '--';
+      } else {
+        const idle = Number(live.source_idle_seconds ?? 0);
+        const sourceText = live.source_ended
+          ? 'Stream ended'
+          : (live.source_idle_seconds !== null && idle > 4 ? 'Buffering…' : 'Receiving');
+        const backlog = Number(live.backlog_seconds ?? 0);
+        document.getElementById('sourceStatus').textContent = sourceText;
+        document.getElementById('transcriptionStatus').textContent =
+          live.processing ? 'Transcribing…' : 'Waiting for audio';
+        document.getElementById('backlogStatus').textContent =
+          backlog <= 0.1 ? '0.0s · Caught up' : `${backlog.toFixed(1)}s behind`;
+        const rtf = Number(live.realtime_factor ?? 0);
+        const avgRtf = Number(live.average_realtime_factor ?? 0);
+        document.getElementById('rtfStatus').textContent =
+          rtf > 0 ? `${rtf.toFixed(2)}× (avg ${avgRtf.toFixed(2)}×)` : '--';
+        document.getElementById('statStatus').textContent =
+          sourceText === 'Buffering…'
+            ? 'Source buffering'
+            : (backlog <= 0.1 ? 'Live · Caught up' : 'Processing backlog');
+      }
 
       // CPU
       document.getElementById('cpuPercent').textContent = (d.cpu_percent ?? 0).toFixed(1);
@@ -1002,11 +1200,16 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       // GPU
       const v = d.vram;
       if (v && !v.error) {
+        document.getElementById('vramMeasurementLabel').textContent =
+          v.vram_measurement === 'CUDA device used (CTranslate2)'
+            ? 'Total device usage'
+            : 'Allocated by app';
         document.getElementById('gpuVramReservedGb').textContent = (v.vram_reserved_gb ?? 0).toFixed(2);
         document.getElementById('gpuVramAllocatedGb').textContent = (v.vram_allocated_gb ?? 0).toFixed(2);
         document.getElementById('gpuDeviceName').textContent = d.system_specs?.gpu_name || 'CUDA';
         setBarWidth(document.getElementById('vramBar'), v.vram_reserved_percent ?? 0);
       } else {
+        document.getElementById('vramMeasurementLabel').textContent = 'Allocated';
         document.getElementById('gpuVramReservedGb').textContent = '--';
         document.getElementById('gpuVramAllocatedGb').textContent = '--';
         document.getElementById('gpuDeviceName').textContent = 'No CUDA';
@@ -1047,6 +1250,8 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       icon.textContent  = '⏵⏵';
       label.textContent = 'Transcribe';
       dot.className = 'dot';
+      const speakerIndicator = document.getElementById('currentSpeakerIndicator');
+      if (speakerIndicator) speakerIndicator.style.display = 'none';
     }
   }
 
@@ -1065,6 +1270,21 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
   }
 
   let _hls = null;
+
+  async function jumpPreviewToLive() {
+    const video = document.getElementById('liveVideo');
+    if (!video) return;
+    try {
+      if (video.buffered && video.buffered.length) {
+        const edge = video.buffered.end(video.buffered.length - 1);
+        video.currentTime = Math.max(0, edge - 0.12);
+      } else if (video.seekable && video.seekable.length) {
+        video.currentTime = Math.max(0, video.seekable.end(video.seekable.length - 1) - 0.12);
+      }
+      video.playbackRate = 1;
+      await video.play();
+    } catch {}
+  }
 
   async function updateVideoBox(active) {
     const box = document.getElementById('videoBox');
@@ -1092,17 +1312,41 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
       <span style="font-size:12px;">Loading stream…</span></div>`;
 
     try {
-      // Embed directly from YouTube to avoid ffmpeg chunked playback.
-      // Note: autoplay on some browsers requires user interaction; we set `mute=1`.
-      const embedSrc = vid
-        ? `https://www.youtube.com/embed/${vid}?autoplay=1&mute=1&playsinline=1&controls=1&rel=0&modestbranding=1`
-        : '';
-      box.innerHTML = `<iframe id="liveVideo" frameborder="0"
-        allow="autoplay; encrypted-media"
-        style="width:100%;height:280px;border-radius:8px;background:#000;display:block;"
-        allowfullscreen></iframe>`;
-      const iframe = document.getElementById('liveVideo');
-      iframe.src = embedSrc;
+      // Use the same authenticated source family as transcription. A YouTube
+      // iframe has a separate cookie context and can show a bot/sign-in gate.
+      const cookieBrowser = document.getElementById('paramCookieBrowser').value;
+      const proxySrc = `/proxy_video?url=${encodeURIComponent(ytUrl)}&cookie_browser=${encodeURIComponent(cookieBrowser)}`;
+      box.innerHTML = `<video id="liveVideo" autoplay muted controls playsinline
+        preload="auto"
+        style="width:100%;height:100%;border-radius:8px;background:#000;
+        display:block;object-fit:contain;"
+        src="${proxySrc}"></video>
+        <div id="videoSpeakerOverlay"
+          style="display:none;position:absolute;left:12px;bottom:45px;z-index:5;
+          align-items:center;gap:7px;border-radius:8px;padding:8px 12px;
+          background:rgba(8,14,24,.88);backdrop-filter:blur(5px);
+          color:#fff;font-size:12px;font-weight:800;letter-spacing:.4px;
+          box-shadow:0 4px 16px rgba(0,0,0,.35);">
+          <span id="videoSpeakerDot"
+            style="width:9px;height:9px;border-radius:50%;background:#4ecdc4;"></span>
+          <span id="videoSpeakerLabel">Identifying speaker</span>
+        </div>`;
+      const liveVideo = document.getElementById('liveVideo');
+      liveVideo.addEventListener('loadedmetadata', jumpPreviewToLive, { once: true });
+      const showEmbedFallback = () => {
+        if (!vid || liveVideo.readyState > 0) return;
+        box.innerHTML = `<iframe
+          title="YouTube live video"
+          src="https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&mute=1&playsinline=1"
+          allow="autoplay; encrypted-media; picture-in-picture"
+          allowfullscreen
+          style="width:100%;height:100%;border:0;border-radius:8px;background:#000;"></iframe>
+          <div style="position:absolute;right:10px;top:10px;z-index:5;
+            padding:5px 8px;border-radius:6px;background:rgba(8,14,24,.82);
+            color:#d6e2f0;font-size:10px;">YouTube preview fallback</div>`;
+      };
+      liveVideo.addEventListener('error', showEmbedFallback, { once: true });
+      setTimeout(showEmbedFallback, 8000);
     } catch (err) {
       // Fallback: thumbnail + link
       const fallbackBg = vid
@@ -1132,11 +1376,12 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     scrollDown(true);
   }
 
-  function addEntry(ts, text, speakerId = null, speakerColor = null, diarizationEnabled = false) {
+  function addEntry(ts, text, speakerId = null, speakerColor = null, diarizationEnabled = false, entryId = null) {
     const el = document.createElement('div');
     el.className = 'entry';
+    if (entryId) el.dataset.entryId = entryId;
     const speakerMarkup = speakerId
-      ? `<div class="speaker-pill" style="background:${speakerColor || '#4ecdc4'}; color:${speakerColor || '#4ecdc4'};">
+      ? `<div class="speaker-pill" style="background:${speakerColor || '#4ecdc4'}22; color:${speakerColor || '#4ecdc4'};">
           <span class="speaker-dot"></span>${escHtml(speakerId)}</div>`
       : '';
     const bubbleStyle = speakerColor ? `border-left: 3px solid ${speakerColor};` : '';
@@ -1155,6 +1400,58 @@ padding:10px;max-height:160px;overflow:auto;color:var(--text-dim);font-size:12px
     scrollDown();
     // Remove highlight after a moment (keeps focus on newest line)
     setTimeout(() => el.classList.remove('latest'), 1200);
+  }
+
+  function updateEntrySpeaker(entryId, speakerId, speakerColor) {
+    if (!entryId) return;
+    const el = document.querySelector(`.entry[data-entry-id="${CSS.escape(entryId)}"]`);
+    if (!el) return;
+    const bubble = el.querySelector('.entry-bubble');
+    if (!bubble) return;
+    bubble.style.borderLeft = `3px solid ${speakerColor || '#4ecdc4'}`;
+    let pill = bubble.querySelector('.speaker-pill');
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.className = 'speaker-pill';
+      bubble.prepend(pill);
+    }
+    pill.style.background = `${speakerColor || '#4ecdc4'}22`;
+    pill.style.color = speakerColor || '#4ecdc4';
+    pill.innerHTML = `<span class="speaker-dot"></span>${escHtml(speakerId || '')}`;
+  }
+
+  function updateActiveSpeaker(speakerId, speakerColor) {
+    const indicator = document.getElementById('currentSpeakerIndicator');
+    const color = speakerColor || '#4ecdc4';
+    const label = speakerId || 'Identifying speaker';
+    if (indicator) {
+      indicator.style.display = 'inline-flex';
+      indicator.style.background = `${color}22`;
+      indicator.style.color = color;
+      indicator.style.border = `1px solid ${color}88`;
+      indicator.textContent = label;
+      indicator.classList.remove('speaker-change-pulse');
+      void indicator.offsetWidth;
+      indicator.classList.add('speaker-change-pulse');
+    }
+    const overlay = document.getElementById('videoSpeakerOverlay');
+    const overlayLabel = document.getElementById('videoSpeakerLabel');
+    const overlayDot = document.getElementById('videoSpeakerDot');
+    if (overlay) {
+      overlay.style.display = 'inline-flex';
+      overlay.style.border = `1px solid ${color}aa`;
+      overlay.classList.remove('speaker-change-pulse');
+      void overlay.offsetWidth;
+      overlay.classList.add('speaker-change-pulse');
+    }
+    if (overlayLabel) {
+      overlayLabel.textContent = label;
+      overlayLabel.style.color = color;
+    }
+    if (overlayDot) {
+      overlayDot.style.background = color;
+      overlayDot.style.boxShadow = `0 0 9px ${color}`;
+    }
   }
 
   function addThinking() {
